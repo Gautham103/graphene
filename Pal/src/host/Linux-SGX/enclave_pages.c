@@ -67,6 +67,17 @@ static void assert_vma_list (void)
 #endif
 }
 
+void allocate_page_range(void * addr, uint64_t size)
+{
+    uint64_t start_addr = addr;
+    uint64_t end_addr = addr + size;
+    struct heap_vma * vma;
+    uint64_t accept_flags = SGX_SECINFO_FLAGS_R | SGX_SECINFO_FLAGS_W |
+                        SGX_SECINFO_FLAGS_REG | SGX_SECINFO_FLAGS_PENDING;
+
+    sgx_accept_pages(accept_flags, start_addr, end_addr);
+}
+
 static void * reserve_area(void * addr, size_t size, struct heap_vma * prev)
 {
     struct heap_vma * next;
@@ -88,6 +99,10 @@ static void * reserve_area(void * addr, size_t size, struct heap_vma * prev)
         next = LISTP_EMPTY(&heap_vma_list) ? NULL :
             LISTP_FIRST_ENTRY(&heap_vma_list, struct heap_vma, list);
     }
+
+    /* Dynamically Request EPC pages in EDMM Mode */
+    if (pal_sec.edmm_mode)
+      allocate_page_range (addr, size);
 
     if (prev && next)
         SGX_DBG(DBG_M, "insert vma between %p-%p and %p-%p\n",
