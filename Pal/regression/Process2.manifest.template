@@ -1,3 +1,8 @@
 loader.debug_type = inline
 
 sgx.trusted_children.1 = file:Bootstrap.sig
+
+sgx.enable_avx = $(ENABLE_AVX)
+sgx.enable_avx512 = $(ENABLE_AVX)
+sgx.edmm_mode = $(ENABLE_EDMM_MODE)
+

@@ -1,3 +1,7 @@
-sgx.require_avx = 0
-sgx.require_avx512 = 0
 sgx.allowed_files.res = file:avxRes
+
+sgx.require_avx = $(ENABLE_AVX)
+sgx.require_avx512 = $(ENABLE_AVX)
+
+sgx.edmm_mode = $(ENABLE_EDMM_MODE)
+
