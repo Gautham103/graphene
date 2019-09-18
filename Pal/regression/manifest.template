@@ -13,3 +13,9 @@ fs.mount.root.uri = file:
 net.allow_bind.1 = 127.0.0.1:8000
 # allow to connect to port 8000
 net.allow_peer.1 = 127.0.0.1:8000
+
+
+sgx.enable_avx = $(ENABLE_AVX)
+sgx.enable_avx512 = $(ENABLE_AVX)
+
+sgx.edmm_mode = $(ENABLE_EDMM_MODE)

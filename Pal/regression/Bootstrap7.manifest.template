@@ -1003,3 +1003,9 @@ loader.env.key997 = na
 loader.env.key998 = na
 loader.env.key999 = na
 loader.env.key1000 = na
+
+
+sgx.enable_avx = $(ENABLE_AVX)
+sgx.enable_avx512 = $(ENABLE_AVX)
+sgx.edmm_mode = $(ENABLE_EDMM_MODE)
+

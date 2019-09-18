@@ -596,15 +596,8 @@ def generate_measurement(attr, areas):
                     load_file(mrenclave, f, 0, area.addr,
                               os.stat(area.file).st_size, area.size,
                               area.desc, area.flags)
-        else:
-            if edmm_mode != 1:
-                for a in range(area.addr, area.addr + area.size, PAGESIZE):
-                    do_eadd(mrenclave, a, area.flags)
-              else:
-                  for a in range(area.addr, area.addr + area.size, PAGESIZE):
-                     if area.desc != "free": # and area.desc != "stack":
-                        do_eadd(mrenclave, a, area.flags)
-
+ 
+        elif edmm_mode != 1 or area.desc != "free":
             for a in range(area.addr, area.addr + area.size, PAGESIZE):
                 data = ZERO_PAGE
                 if area.content is not None:
