@@ -1,5 +1,8 @@
 include ../src/Makefile.Host
 
+ENABLE_AVX ?= 1
+ENABLE_EDMM_MODE ?= 0
+
 CC	= gcc
 CFLAGS	= -Wall -O2 -std=c11 -fno-builtin -nostdlib -mavx -no-pie \
 	  -I../include/pal -I../lib
@@ -37,6 +40,8 @@ endif
 manifest_rules = \
 	-e 's:\$$(PAL):$(abspath ../../Runtime/pal_loader):g' \
 	-e 's:\$$(PWD):$(shell pwd)/:g' \
+    -e 's:\$$(ENABLE_AVX):$(ENABLE_AVX):g' \
+    -e 's:\$$(ENABLE_EDMM_MODE):$(ENABLE_EDMM_MODE):g' \
 	$(extra_rules)
 
 manifest: manifest.template
