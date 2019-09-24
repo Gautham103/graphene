@@ -600,9 +600,9 @@ def generate_measurement(attr, areas):
             if edmm_mode != 1:
                 for a in range(area.addr, area.addr + area.size, PAGESIZE):
                     do_eadd(mrenclave, a, area.flags)
-              else:
-                  for a in range(area.addr, area.addr + area.size, PAGESIZE):
-                     if area.desc != "free": # and area.desc != "stack":
+            else:
+                for a in range(area.addr, area.addr + area.size, PAGESIZE):
+                    if area.desc != "free": # and area.desc != "stack":
                         do_eadd(mrenclave, a, area.flags)
 
             for a in range(area.addr, area.addr + area.size, PAGESIZE):

@@ -529,7 +529,7 @@ int initialize_enclave (struct pal_enclave * enclave)
             }
         }
 
-        if (!enclave->pal_sec.edmm_mode || (!strcmp_static(areas[i].desc, "free")))
+        if (!enclave->pal_sec.edmm_mode || strcmp_static(areas[i].desc, "free"))
         {
             ret = add_pages_to_enclave(&enclave_secs, (void *) areas[i].addr, data, areas[i].size,
                     areas[i].type, areas[i].prot, areas[i].skip_eextend, areas[i].desc);

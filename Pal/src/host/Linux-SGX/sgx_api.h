@@ -70,6 +70,12 @@ static inline int64_t sgx_getkey (sgx_arch_keyrequest_t * keyrequest,
     return rax;
 }
 
+int sgx_do_eaccept(sgx_arch_secinfo_t* si, const void * addr);
+
+int sgx_do_emodpe(sgx_arch_secinfo_t* si, const void * addr);
+
+int sgx_accept_pages(uint64_t sfl, size_t lo, size_t hi);
+
 /*
  * rdrand:
  * Get hardware generated random value.
