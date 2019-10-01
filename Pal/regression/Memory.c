@@ -42,14 +42,14 @@ int main (int argc, char ** argv, char ** envp)
         c = count;
         *(volatile int *) mem2 = 0;
         __asm__ volatile("nop");
-        if (c == count - 1)
+        if (c == count)
             pal_printf("Memory Protection (R) OK\n");
 
         DkVirtualMemoryFree(mem2, UNIT);
         c = count;
         *(volatile int *) mem2 = 0;
         __asm__ volatile("nop");
-        if (c == count - 1)
+        if (c == count)
             pal_printf("Memory Deallocation OK\n");
     }
 
