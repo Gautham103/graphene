@@ -596,7 +596,6 @@ def generate_measurement(attr, areas):
                     load_file(mrenclave, f, 0, area.addr,
                               os.stat(area.file).st_size, area.size,
                               area.desc, area.flags)
- 
         elif edmm_mode != 1 or area.desc != "free":
             for a in range(area.addr, area.addr + area.size, PAGESIZE):
                 data = ZERO_PAGE
