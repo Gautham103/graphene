@@ -33,6 +33,9 @@ struct pal_sec {
     sgx_measurement_t  mr_signer;
     sgx_attributes_t   enclave_attributes;
 
+    /* edmm mode */
+    uint8_t edmm_mode;
+
     /* remaining heap usable by application */
     PAL_PTR         heap_min, heap_max;
 

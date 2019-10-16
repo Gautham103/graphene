@@ -1,1 +1,2 @@
 loader.debug_type = inline
+sgx.edmm_mode = $(ENABLE_EDMM_MODE)

@@ -206,12 +206,16 @@ typedef struct {
     uint64_t reserved[7];
 } sgx_arch_sec_info_t;
 
-#define SGX_SECINFO_FLAGS_R    0x001
-#define SGX_SECINFO_FLAGS_W    0x002
-#define SGX_SECINFO_FLAGS_X    0x004
-#define SGX_SECINFO_FLAGS_SECS 0x000
-#define SGX_SECINFO_FLAGS_TCS  0x100
-#define SGX_SECINFO_FLAGS_REG  0x200
+#define SGX_SECINFO_FLAGS_R        0x001
+#define SGX_SECINFO_FLAGS_W        0x002
+#define SGX_SECINFO_FLAGS_X        0x004
+#define SGX_SECINFO_FLAGS_SECS     0x000
+#define SGX_SECINFO_FLAGS_TCS      0x100
+#define SGX_SECINFO_FLAGS_REG      0x200
+/* EDMM PAGE STATUS */
+#define SGX_SECINFO_FLAGS_PENDING  0x008
+#define SGX_SECINFO_FLAGS_MODIFIED 0x010
+#define SGX_SECINFO_FLAGS_PR       0x020
 
 typedef struct _css_header_t {
     uint8_t  header[12];
@@ -367,6 +371,8 @@ typedef uint8_t sgx_key_128bit_t[16];
 #define EREPORT 0
 #define EGETKEY 1
 #define EEXIT   4
+#define EACCEPT 5
+#define EMODPE  6
 
 #define LAUNCH_KEY         0
 #define PROVISION_KEY      1

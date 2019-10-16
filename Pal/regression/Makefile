@@ -83,7 +83,12 @@ manifest_rules = \
 	-e 's:\$$(PWD):$(shell pwd)/:g' \
 	-e 's:\$$(RA_CLIENT_SPID):$(RA_CLIENT_SPID):g' \
 	-e 's:\$$(RA_CLIENT_KEY):$(RA_CLIENT_KEY):g' \
-	-e 's:\$$(RA_CLIENT_LINKABLE):$(if $(RA_CLIENT_LINKABLE),$(RA_CLIENT_LINKABLE),0):g'
+	-e 's:\$$(ENABLE_EDMM_MODE):$(ENABLE_EDMM_MODE):g' \
+	-e 's:\$$(RA_CLIENT_LINKABLE):$(if $(RA_CLIENT_LINKABLE),$(RA_CLIENT_LINKABLE),0):g' \
+	$(extra_rules)
+
+manifest: manifest.template
+	sed $(manifest_rules) $< >$@
 
 .PHONY: crt_init-recurse
 crt_init-recurse:

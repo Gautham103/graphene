@@ -2,3 +2,4 @@
 
 loader.exec = file:Bootstrap
 loader.execname = Bootstrap
+sgx.edmm_mode = $(ENABLE_EDMM_MODE)
