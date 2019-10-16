@@ -5,3 +5,5 @@ loader.preload = file:Preload1.so,file:Preload2.so
 fs.mount.root.uri = file:
 
 sgx.enclave_size = 8192M
+
+sgx.edmm_mode = $(ENABLE_EDMM_MODE)

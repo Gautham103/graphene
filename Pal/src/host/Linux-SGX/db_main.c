@@ -122,6 +122,47 @@ static PAL_HANDLE setup_dummy_file_handle (const char * name)
     return handle;
 }
 
+
+static unsigned long parse_int (const char * str)
+{
+    unsigned long num = 0;
+    int radix = 10;
+    char c;
+
+     if (str[0] == '0') {
+        str++;
+        radix = 8;
+        if (str[0] == 'x') {
+            str++;
+            radix = 16;
+        }
+    }
+
+     while ((c = *(str++))) {
+        int val;
+        if (c >= 'A' && c <= 'F')
+            val = c - 'A' + 10;
+        else if (c >= 'a' && c <= 'f')
+            val = c - 'a' + 10;
+        else if (c >= '0' && c <= '9')
+            val = c - '0';
+        else
+            break;
+        if (val >= radix)
+            break;
+        num = num * radix + val;
+    }
+
+     if (c == 'G' || c == 'g')
+        num *= 1024 * 1024 * 1024;
+    else if (c == 'M' || c == 'm')
+        num *= 1024 * 1024;
+    else if (c == 'K' || c == 'k')
+        num *= 1024;
+
+     return num;
+}
+
 static int loader_filter (const char * key, int len)
 {
     if (len > 7 && key[0] == 'l' && key[1] == 'o' && key[2] == 'a' && key[3] == 'd' &&
@@ -226,6 +267,7 @@ void pal_linux_main(char * uptr_args, uint64_t args_size,
     pal_sec.exec_size = GET_ENCLAVE_TLS(exec_size);
 
     /* Zero the heap. We need to take care to not zero the exec area. */
+#if 0
 
     void* zero1_start = pal_sec.heap_min;
     void* zero1_end = pal_sec.heap_max;
@@ -240,6 +282,7 @@ void pal_linux_main(char * uptr_args, uint64_t args_size,
 
     memset(zero1_start, 0, zero1_end - zero1_start);
     memset(zero2_start, 0, zero2_end - zero2_start);
+#endif
 
     /* relocate PAL itself */
     pal_map.l_addr = elf_machine_load_address();
@@ -389,9 +432,19 @@ void pal_linux_main(char * uptr_args, uint64_t args_size,
         ocall_exit(rv, /*is_exitgroup=*/true);
     }
 
+    char cfgbuf[CONFIG_MAX];
+
     pal_state.root_config = root_config;
     __pal_control.manifest_preload.start = (PAL_PTR) manifest_addr;
     __pal_control.manifest_preload.end = (PAL_PTR) manifest_addr + manifest_size;
+
+    if (get_config(pal_state.root_config, "sgx.edmm_mode", cfgbuf, CONFIG_MAX) <= 0) {
+        SGX_DBG(DBG_E, "edmm_mode is not specified, edmm mode is disabled by default\n");
+        pal_sec.edmm_mode = 0;
+    }
+
+     pal_sec.edmm_mode = parse_int(cfgbuf);
+
 
     if ((rv = init_trusted_platform()) < 0) {
         SGX_DBG(DBG_E, "Failed to verify the platform using remote attestation: %d\n", rv);

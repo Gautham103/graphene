@@ -1,5 +1,7 @@
 include ../src/Makefile.Host
 
+ENABLE_EDMM_MODE ?= 0
+
 CC	= gcc
 CFLAGS	= -Wall -O2 -std=c11 -fno-builtin -nostdlib \
 	  -I../include/pal -I../lib -I../src
@@ -48,6 +50,7 @@ manifest_rules = \
 	-e 's:\$$(PWD):$(shell pwd)/:g' \
 	-e 's:\$$(RA_CLIENT_SPID):$(RA_CLIENT_SPID):g' \
 	-e 's:\$$(RA_CLIENT_KEY):$(RA_CLIENT_KEY):g' \
+	-e 's:\$$(ENABLE_EDMM_MODE):$(ENABLE_EDMM_MODE):g' \
 	-e 's:\$$(RA_CLIENT_LINKABLE):$(if $(RA_CLIENT_LINKABLE),$(RA_CLIENT_LINKABLE),0):g' \
 	$(extra_rules)
 

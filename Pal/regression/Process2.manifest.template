@@ -1,3 +1,5 @@
 loader.debug_type = inline
 
 sgx.trusted_children.1 = file:Bootstrap.sig
+
+sgx.edmm_mode = $(ENABLE_EDMM_MODE)
