@@ -12,6 +12,33 @@ extern void * enclave_base, * enclave_top;
 static struct atomic_int enclave_start_called = ATOMIC_INIT(0);
 
 
+void pal_expand_stack(unsigned long fault_addr)
+{
+    unsigned long stack_commit_top = GET_ENCLAVE_TLS(stack_commit_top);
+    unsigned long accept_flags = SGX_SECINFO_FLAGS_R | SGX_SECINFO_FLAGS_W |
+                        SGX_SECINFO_FLAGS_REG | SGX_SECINFO_FLAGS_PENDING;
+    unsigned long stack_init_addr = GET_ENCLAVE_TLS(initial_stack_offset);
+    unsigned long end_addr = fault_addr - PRESET_PAGESIZE;
+
+     SGX_DBG(DBG_E, "fault_addr, stack_commit_top, stack_init_addr: %p, %p, %p\n",
+		(void *)fault_addr, (void *)stack_commit_top, (void *)stack_init_addr);
+    //if (fault_addr < (stack_init_addr - ENCLAVE_STACK_SIZE * PRESET_PAGESIZE)) {
+      //  SGX_DBG(DBG_E, "stack overrun, stop!\n");
+        //return ;
+    //}
+    /* Bridge the gap between fault addr and top if any */
+    sgx_accept_pages(accept_flags, fault_addr, stack_commit_top, 0);
+
+     stack_commit_top = fault_addr;
+    /* Overgrow one more page */
+    if (end_addr >= stack_init_addr - ENCLAVE_STACK_SIZE * PRESET_PAGESIZE) {
+        sgx_accept_pages(accept_flags, end_addr, fault_addr, 0);
+        stack_commit_top = fault_addr;
+    }
+
+ }
+
+
 /*
  * Called from enclave_entry.S to execute ecalls.
  *
@@ -50,11 +77,20 @@ void handle_ecall (long ecall_index, void * ecall_args, void * exit_target,
         enclave_top = enclave_base_addr + GET_ENCLAVE_TLS(enclave_size);
     }
 
-    SET_ENCLAVE_TLS(exit_target, exit_target);
-    SET_ENCLAVE_TLS(ustack_top,  untrusted_stack);
-    SET_ENCLAVE_TLS(ustack,      untrusted_stack);
+    if (ecall_index != ECALL_STACK_EXPAND) {
+        SET_ENCLAVE_TLS(exit_target, exit_target);
+        SET_ENCLAVE_TLS(ustack_top,  untrusted_stack);
+        SET_ENCLAVE_TLS(ustack,      untrusted_stack);
+        SET_ENCLAVE_TLS(ocall_pending, (void *) 0);
+    }
 
-    if (atomic_cmpxchg(&enclave_start_called, 0, 1) == 0) {
+    void * utr_stack = GET_ENCLAVE_TLS(ustack);
+    SGX_DBG(DBG_E, "utrusted stack: %p\n", utr_stack);
+
+    if (ecall_index == ECALL_STACK_EXPAND) {
+        pal_expand_stack((unsigned long)ecall_args);
+
+    } else if (atomic_cmpxchg(&enclave_start_called, 0, 1) == 0) {
         // ENCLAVE_START not yet called, so only valid ecall is ENCLAVE_START.
         if (ecall_index != ECALL_ENCLAVE_START) {
             // To keep things simple, we treat an invalid ecall_index like an
@@ -73,6 +109,7 @@ void handle_ecall (long ecall_index, void * ecall_args, void * exit_target,
         pal_linux_main(ms->ms_args, ms->ms_args_size,
                        ms->ms_env, ms->ms_env_size,
                        ms->ms_sec_info);
+        ocall_exit(0, /*is_exitgroup=*/false);
     } else {
         // ENCLAVE_START already called (maybe successfully, maybe not), so
         // only valid ecall is THREAD_START.
@@ -86,6 +123,12 @@ void handle_ecall (long ecall_index, void * ecall_args, void * exit_target,
         }
 
         pal_start_thread();
+        ocall_exit(0, /*is_exitgroup=*/false);
     }
+
+    utr_stack = GET_ENCLAVE_TLS(ustack);
+    SGX_DBG(DBG_E, "untrusted stack after: %p\n", utr_stack);
+    SGX_DBG(DBG_E, "exit_target: %p\n", GET_ENCLAVE_TLS(exit_target));
+
     // pal_linux_main and pal_start_thread should never return.
 }

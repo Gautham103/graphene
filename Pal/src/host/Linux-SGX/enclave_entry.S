@@ -20,9 +20,19 @@ enclave_entry:
 	# x86-64 sysv abi requires %rFLAGS.DF = 0 on entry to function call.
 	cld
 
-	cmpq $0, %rax
-	jne .Lprepare_resume
+	cmp $0, %rax
+	je .Lnormal_enter
 
+    # Exception for growing stacks
+    cmp $2, %rdi
+    je .Lnormal_enter
+
+    # OCALL made in Exception context
+    cmp $1, %gs:SGX_OCALL_PENDING
+    jne .Lnormal_enter
+
+
+.Lnormal_enter:
 	# ECALL return address in RCX (filled by EENTER hardware flow)
 	movq %rcx, %gs:SGX_ECALL_RETURN_ADDR
 
@@ -47,8 +57,19 @@ enclave_entry:
 
 	# Only jump to .Lreturn_from_ocall if we have prepared the stack for
 	# it.
+    
+    cmp $0, %gs:SGX_OCALL_PENDING
+    jne .Lreturn_from_ocall
+
 	cmpq $0, %gs:SGX_OCALL_PREPARED
 	jne .Lreturn_from_ocall
+
+	# calculate enclave base = RBX (trusted) - %gs:SGX_TCS_OFFSET
+	subq %gs:SGX_TCS_OFFSET, %rbx
+	movq %rbx, %r8
+
+	# push untrusted stack address to RCX
+	movq %rsp, %rcx
 
 	# PAL convention:
 	# RDI - ECALL number
@@ -56,9 +77,13 @@ enclave_entry:
 	# RDX - exit target
 	# RCX (former RSP) - The untrusted stack
 	# R8  - enclave base
+    # R9  - address of normal return
 
 	cmpq $ECALL_THREAD_RESET, %rdi
 	je .Lhandle_thread_reset
+
+    cmpq $ECALL_STACK_EXPAND, %rdi
+    je .Lhandle_exception_stack
 
 	# Except ecall_thread_reset, ecalls are only used to start a thread (main
 	# or additional threads). We already checked for case of ecall_thread_reset,
@@ -69,17 +94,11 @@ enclave_entry:
 1:
 	movq $1, %gs:SGX_THREAD_STARTED
 
-	# calculate enclave base = RBX (trusted) - %gs:SGX_TCS_OFFSET
-	subq %gs:SGX_TCS_OFFSET, %rbx
-	movq %rbx, %r8
-
-	# push untrusted stack address to RCX
-	movq %rsp, %rcx
-
 	# switch to enclve stack: enclave base + %gs:SGX_INITIAL_STACK_OFFSET
 	addq %gs:SGX_INITIAL_STACK_OFFSET, %rbx
 	movq %rbx, %rsp
 
+.Ldo_handle_ecall:
 	# clear the rest of register states
 	xorq %rax, %rax
 	xorq %rbx, %rbx
@@ -102,10 +121,33 @@ enclave_entry:
 
 	# register states need to be carefully checked, so we move the handling
 	# to handle_ecall() in enclave_ecalls.c
-	callq handle_ecall
+    push %rcx
+    push %rdx
+	push %rdi
+    callq handle_ecall
+    pop %rdi
+    pop %rdx
+    pop %rcx
+
+    cmpq $ECALL_STACK_EXPAND, %rdi
+    jne 1f
+    movq %rcx, %rsp
+    je .Leexit_exception
+1:
 
 	# handle_ecall will only return when invalid parameters has been passed.
 	FAIL_LOOP
+ 
+.Lhandle_exception_stack:
+	add %gs:SGX_EXCEPTION_STACK_OFFSET, %rbx
+    mov %rbx, %rsp
+
+    # In exception handler, ecall returns to the next
+    # RCX contains the return address, however occupied
+    # Using SGX_ECALL_RETURN_ADDR instead
+    mov %gs:SGX_ECALL_RETURN_ADDR, %r9
+    mov %r9, %gs:SGX_ECALL_RET_TARGET
+	jmp .Ldo_handle_ecall
 
 	# clear TLS variables for thread reuse
 .Lhandle_thread_reset:
@@ -484,6 +526,8 @@ sgx_ocall:
 .Locall_after_set_ocall_prepared:
 	movq %rsp, %gs:SGX_STACK
 
+    movq $1, %gs:SGX_OCALL_PENDING
+
 .Locall_about_to_eexit_begin:
 	# From here .Lhandle_exception can mess out with state (%rip and %rsp).
 	# We therefore need to be extremely careful when making changes here.
@@ -500,6 +544,9 @@ sgx_ocall:
 	leaq .Lfor_cfa_debug_info(%rip), %r8
 	pushq %r8
 #endif
+
+    cmp $1, %gs:SGX_OCALL_PENDING
+	jne .Lecall_return_setup
 
 	movq %gs:SGX_EXIT_TARGET, %rbx
 	.cfi_endproc
@@ -572,8 +619,15 @@ __morestack:
 	xorq %r14, %r14
 	subq %r15, %r15 # use sub to set flags to a fixed value
 
+.Lexecute_exit:
 	movq $EEXIT, %rax
 	ENCLU
+
+.Lecall_return_setup:
+	mov %gs:SGX_ECALL_RET_TARGET, %rbx
+    mov %gs:SGX_ECALL_RETURN_ADDR, %rcx
+    jmp .Lexecute_exit
+
 .Locall_about_to_eexit_end:
 
 	ud2 # We should never get here.
@@ -617,6 +671,7 @@ __morestack:
 .Lreturn_from_ocall_after_clear_ocall_prepared:
 
 	movq %rdi, %rax
+    movq $0, %gs:SGX_OCALL_PENDING
 
 	# restore FSBASE if necessary
 	movq %gs:SGX_FSBASE, %rbx
@@ -662,9 +717,9 @@ __morestack:
 * sgx_accept:
  * EACCEPT pages for dynamic memory management
  */
-    .global sgx_do_eaccept
-    .type sgx_do_eaccept, @function
-sgx_do_eaccept:
+    .global sgx_accept
+    .type sgx_accept, @function
+sgx_accept:
     .cfi_startproc
 
     push %rbx
@@ -678,16 +733,16 @@ sgx_do_eaccept:
     ret
 
     .cfi_endproc
-    .size sgx_do_eaccept, .-sgx_do_eaccept
+    .size sgx_accept, .-sgx_accept
 
  /*
  * sgx_emodpe:
  * EMODPE pages for dynamic memory management
  */
 
-    .global sgx_do_emodpe
-    .type sgx_do_emodpe, @function
-sgx_do_emodpe:
+    .global sgx_modpe
+    .type sgx_modpe, @function
+sgx_modpe:
     .cfi_startproc
 
     push %rbx
@@ -701,7 +756,7 @@ sgx_do_emodpe:
     ret
 
     .cfi_endproc
-    .size sgx_do_emodpe, .-sgx_do_emodpe
+    .size sgx_modpe, .-sgx_modpe
 
 
 

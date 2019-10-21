@@ -214,6 +214,7 @@ static void _DkResumeSighandler (int signum, siginfo_t * info,
     __UNUSED(info);
 
     unsigned long rip = uc->uc_mcontext.gregs[REG_RIP];
+    unsigned long rax = uc->uc_mcontext.gregs[REG_RAX];
 
     if (rip != (unsigned long) async_exit_pointer) {
         switch (signum) {
@@ -237,7 +238,19 @@ static void _DkResumeSighandler (int signum, siginfo_t * info,
     }
 
     int event = get_event_num(signum);
-    sgx_raise(event);
+    unsigned long fault_addr = (unsigned long)info->si_addr;
+    unsigned long stack_start_addr = current_enclave->stackinfo.start_addr;
+    unsigned long stack_end_addr = current_enclave->stackinfo.end_addr;
+    // fault happened at stack area
+    if (current_enclave->pal_sec.edmm_mode
+		&& signum == SIGBUS && rax == ERESUME
+                && (fault_addr <= stack_start_addr
+		    && fault_addr > stack_end_addr)){
+        ecall_stack_expand((void *)fault_addr);
+	printf("return from stack expand!\n");
+    }
+    else
+        sgx_raise(event);
 }
 
 int sgx_signal_setup (void)

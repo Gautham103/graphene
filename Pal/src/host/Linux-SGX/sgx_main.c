@@ -364,6 +364,8 @@ int initialize_enclave (struct pal_enclave * enclave)
     };
     struct mem_area* tls_area = &areas[area_num++];
 
+
+
     struct mem_area* stack_areas = &areas[area_num]; /* memorize for later use */
     for (uint32_t t = 0; t < enclave->thread_num; t++) {
         areas[area_num] = (struct mem_area) {
@@ -372,6 +374,17 @@ int initialize_enclave (struct pal_enclave * enclave)
             .prot = PROT_READ | PROT_WRITE, .type = SGX_PAGE_REG
         };
         area_num++;
+    }
+
+    struct mem_area* exception_stack_area = NULL;
+    if (enclave->pal_sec.edmm_mode)
+    {
+        areas[area_num] = (struct mem_area) {
+            .desc = "exception_stack", .skip_eextend = false, .is_binary = false,
+                .fd = -1, .addr = 0, .size = pagesize,
+                .prot = PROT_READ | PROT_WRITE, .type = SGX_PAGE_REG
+        };
+        exception_stack_area = &areas[area_num++];
     }
 
     areas[area_num] = (struct mem_area) {
@@ -447,6 +460,10 @@ int initialize_enclave (struct pal_enclave * enclave)
         area_num++;
     }
 
+    /* store stack range info for dynamic stack grow */
+    enclave->stackinfo.start_addr = stack_areas[0].addr + ENCLAVE_STACK_SIZE * PRESET_PAGESIZE;
+    enclave->stackinfo.end_addr = stack_areas[enclave->thread_num - 1].addr;
+
     for (int i = 0 ; i < area_num ; i++) {
         if (areas[i].fd != -1 && areas[i].is_binary) {
             ret = load_enclave_binary(&enclave_secs, areas[i].fd, areas[i].addr, areas[i].prot);
@@ -484,6 +501,12 @@ int initialize_enclave (struct pal_enclave * enclave)
                     enclave_secs.base;
                 gs->gpr = gs->ssa +
                     enclave->ssaframesize - sizeof(sgx_pal_gpr_t);
+                gs->ocall_pending = 0;
+                if (enclave->pal_sec.edmm_mode){
+                    /* TODO: each thread should have their own exception stack */
+                    gs->exception_stack_offset = exception_stack_area->addr + pagesize;
+                    gs->stack_commit_top = gs->initial_stack_offset;
+                }
                 gs->manifest_size = manifest_size;
                 gs->heap_min = (void *) enclave_secs.base + heap_min;
                 gs->heap_max = (void *) enclave_secs.base + pal_area->addr - MEMORY_GAP;
@@ -528,8 +551,13 @@ int initialize_enclave (struct pal_enclave * enclave)
             }
         }
 
-        if (!enclave->pal_sec.edmm_mode || strcmp_static(areas[i].desc, "free"))
+        if (!enclave->pal_sec.edmm_mode || !(!strcmp_static(areas[i].desc, "free")))
         {
+            if (enclave->pal_sec.edmm_mode && !strcmp_static(areas[i].desc, "stack")) {
+                areas[i].addr = areas[i].addr + areas[i].size - pagesize;
+                areas[i].size = pagesize;
+            }
+
             ret = add_pages_to_enclave(&enclave_secs, (void *) areas[i].addr, data, areas[i].size,
                     areas[i].type, areas[i].prot, areas[i].skip_eextend, areas[i].desc);
         }

@@ -6,3 +6,5 @@ int ecall_enclave_start (char * args, size_t args_size, char * env, size_t env_s
 int ecall_thread_start (void);
 
 int ecall_thread_reset (void);
+
+int ecall_stack_expand (void * fault_addr);

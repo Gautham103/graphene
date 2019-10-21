@@ -73,6 +73,11 @@ void dummy(void)
     OFFSET(SGX_COMMON_SELF, enclave_tls, common.self);
     OFFSET(SGX_ENCLAVE_SIZE, enclave_tls, enclave_size);
     OFFSET(SGX_TCS_OFFSET, enclave_tls, tcs_offset);
+    OFFSET(SGX_EXCEPTION_STACK_OFFSET, enclave_tls, exception_stack_offset);
+    OFFSET(SGX_STACK_COMMIT_TOP, enclave_tls, stack_commit_top);
+    OFFSET(SGX_ECALL_RET_TARGET, enclave_tls, ecall_ret_target);
+    OFFSET(SGX_THREAD_MANAGE_STACK_OFFSET, enclave_tls, thread_manage_stack_offset);
+    OFFSET(SGX_OCALL_PENDING, enclave_tls, ocall_pending);
     OFFSET(SGX_INITIAL_STACK_OFFSET, enclave_tls, initial_stack_offset);
     OFFSET(SGX_ECALL_RETURN_ADDR, enclave_tls, ecall_return_addr);
     OFFSET(SGX_SSA, enclave_tls, ssa);
@@ -150,6 +155,7 @@ void dummy(void)
     DEFINE(ECALL_ENCLAVE_START, ECALL_ENCLAVE_START);
     DEFINE(ECALL_THREAD_START, ECALL_THREAD_START);
     DEFINE(ECALL_THREAD_RESET, ECALL_THREAD_RESET);
+    DEFINE(ECALL_STACK_EXPAND, ECALL_STACK_EXPAND);
 
     /* Ocall Index */
     DEFINE(OCALL_EXIT, OCALL_EXIT);

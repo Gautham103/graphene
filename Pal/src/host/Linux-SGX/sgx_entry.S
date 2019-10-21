@@ -15,6 +15,10 @@ sgx_ecall:
 	leaq sgx_entry(%rip), %rdx
 
 	# other arguments: RDI - code, RSI - ms
+    cmpq $ECALL_STACK_EXPAND, %rdi
+    jne 1f
+    leaq .Lecall_return(%rip), %rdx
+1:
 
 .Ldo_ecall:
 	# RBX has to be the TCS of the thread
@@ -27,6 +31,7 @@ sgx_ecall:
 	movq $EENTER, %rax
 	ENCLU
 
+.Lecall_return:
 	# currently only ECALL_THREAD_RESET returns
 	popq %rbx
 	retq

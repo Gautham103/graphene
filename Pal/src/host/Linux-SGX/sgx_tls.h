@@ -24,6 +24,11 @@ struct enclave_tls {
         void*    stack;
         void*    ustack_top;
         void*    ustack;
+        uint64_t exception_stack_offset;
+        uint64_t stack_commit_top;
+        uint64_t ecall_ret_target;
+        uint64_t thread_manage_stack_offset;
+        uint64_t ocall_pending;
         struct pal_handle_thread* thread;
         uint64_t ocall_prepared;
         uint64_t thread_started;
@@ -63,5 +68,7 @@ extern uint64_t dummy_debug_variable;
     } while (0)
 
 # endif
+
+
 
 #endif /* __SGX_TLS_H__ */
