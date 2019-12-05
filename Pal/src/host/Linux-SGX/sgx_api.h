@@ -101,13 +101,10 @@ static inline void wrfsbase (uint64_t addr)
         :: "D"(addr));
 }
 
-void restore_sgx_context(sgx_cpu_context_t *ctx);
-void _restore_sgx_context(sgx_cpu_context_t *ctx);
+int sgx_accept(sgx_arch_sec_info_t* si, const void* addr);
 
-int sgx_accept(sgx_arch_sec_info_t* si, const void * addr);
+int sgx_modpe(sgx_arch_sec_info_t* si, const void* addr);
 
-int sgx_modpe(sgx_arch_sec_info_t* si, const void * addr);
-
-int sgx_accept_pages(uint64_t sfl, size_t lo, size_t hi);
+int sgx_accept_pages(uint64_t sfl, size_t lo, size_t hi, bool executable);
 
 #endif /* SGX_API_H */

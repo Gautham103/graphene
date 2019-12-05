@@ -7,6 +7,7 @@
 #include "sgx_arch.h"
 #include "sgx_enclave.h"
 #include "sgx_internal.h"
+#include <linux/version.h>
 
 int gsgx_device = -1;
 int isgx_device = -1;
@@ -279,6 +280,24 @@ int add_pages_to_enclave(sgx_arch_secs_t * secs,
     }
 
     return 0;
+}
+
+void mktcs(unsigned long tcs_addr) {
+    struct sgx_range params;
+    memset(&params, 0 ,sizeof(struct sgx_range));
+    params.start_addr = tcs_addr;
+    params.nr_pages = 1;
+    int ret = 0;
+
+#if SDK_DRIVER_VERSION >= KERNEL_VERSION(2, 0, 0)
+    ret = INLINE_SYSCALL(ioctl, 3, isgx_device, SGX_IOC_ENCLAVE_MKTCS, &params);
+    if (IS_ERR(ret)) {
+        SGX_DBG(DBG_I, "Enclave MKTCS returned %d\n", ret);
+	    return;
+    }
+#else
+    SGX_DBG(DBG_E, "EDMM is not supported by SDK before 2.0\n");
+#endif
 }
 
 int init_enclave(sgx_arch_secs_t * secs,

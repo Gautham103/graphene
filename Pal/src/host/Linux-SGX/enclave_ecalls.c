@@ -11,6 +11,64 @@ extern void * enclave_base, * enclave_top;
 
 static struct atomic_int enclave_start_called = ATOMIC_INIT(0);
 
+struct thread_map {
+    unsigned int         tid;
+    unsigned int         thread_index;
+    unsigned int         status;
+    sgx_arch_tcs_t*      tcs;
+    unsigned long        tcs_addr;
+    unsigned long        ssa_addr;
+    unsigned long        tls_addr;
+    unsigned long        enclave_entry;
+};
+
+void pal_thread_setup(void* ecall_args) {
+    struct thread_map* thread_info = (struct thread_map* )ecall_args;
+    unsigned long regular_flags = SGX_SECINFO_FLAGS_R | SGX_SECINFO_FLAGS_W |
+                        SGX_SECINFO_FLAGS_REG | SGX_SECINFO_FLAGS_PENDING;
+    SGX_DBG(DBG_I, "the created thread using tcs at  %p, tls at %p, ssa at %p\n",
+			(void*)thread_info->tcs_addr, (void*)thread_info->tls_addr, (void*)thread_info->ssa_addr);
+
+    sgx_accept_pages(regular_flags, thread_info->tcs_addr, thread_info->tcs_addr + PRESET_PAGESIZE, 0);
+    sgx_accept_pages(regular_flags, thread_info->tls_addr, thread_info->tls_addr + PRESET_PAGESIZE, 0);
+    sgx_accept_pages(regular_flags, thread_info->ssa_addr, thread_info->ssa_addr + 2 * PRESET_PAGESIZE, 0);
+
+     // Setup TLS
+    struct enclave_tls* tls = (struct enclave_tls*) thread_info->tls_addr;
+    tls->enclave_size = GET_ENCLAVE_TLS(enclave_size);
+    tls->tcs_offset = thread_info->tcs_addr;
+
+    unsigned long stack_gap = thread_info->thread_index * (ENCLAVE_STACK_SIZE + PRESET_PAGESIZE); // There is a gap between stacks
+    tls->initial_stack_offset = GET_ENCLAVE_TLS(initial_stack_offset) - stack_gap;
+
+    tls->ssa = (void*)thread_info->ssa_addr;
+    tls->gpr = tls->ssa + PRESET_PAGESIZE - sizeof(sgx_pal_gpr_t);
+
+     // Setup TCS
+    thread_info->tcs = (sgx_arch_tcs_t*) thread_info->tcs_addr;
+    memset((void*)thread_info->tcs_addr, 0, PRESET_PAGESIZE);
+    thread_info->tcs->ossa = thread_info->ssa_addr;
+    thread_info->tcs->nssa = 2;
+    thread_info->tcs->oentry = thread_info->enclave_entry;
+    thread_info->tcs->ofs_base = 0;
+    thread_info->tcs->ogs_base = thread_info->tls_addr;
+    thread_info->tcs->ofs_limit = 0xfff;
+    thread_info->tcs->ogs_limit = 0xfff;
+
+     // PRE-ALLOCATE two pages for STACK
+    unsigned long accept_flags = SGX_SECINFO_FLAGS_R | SGX_SECINFO_FLAGS_W |
+                        SGX_SECINFO_FLAGS_REG | SGX_SECINFO_FLAGS_PENDING;
+
+    sgx_accept_pages(accept_flags, tls->initial_stack_offset - 2 * PRESET_PAGESIZE, tls->initial_stack_offset, 0);
+}
+
+void pal_thread_create(void* ecall_args) {
+    struct thread_map* thread_info = (struct thread_map*)ecall_args;
+    unsigned long tcs_flags = SGX_SECINFO_FLAGS_TCS | SGX_SECINFO_FLAGS_MODIFIED;
+
+    int rs = sgx_accept_pages(tcs_flags, thread_info->tcs_addr, thread_info->tcs_addr + PRESET_PAGESIZE, 0);
+    if (rs != 0) SGX_DBG(DBG_E, "EACCEPT TCS Change failed: %d\n", rs);
+}
 
 /*
  * Called from enclave_entry.S to execute ecalls.
@@ -55,7 +113,13 @@ void handle_ecall (long ecall_index, void * ecall_args, void * exit_target,
     SET_ENCLAVE_TLS(ustack,          untrusted_stack);
     SET_ENCLAVE_TLS(clear_child_tid, NULL);
 
-    if (atomic_cmpxchg(&enclave_start_called, 0, 1) == 0) {
+    if (ecall_index == ECALL_THREAD_SETUP) {
+        pal_thread_setup(ecall_args);
+
+    } else if (ecall_index == ECALL_THREAD_CREATE) {
+        pal_thread_create(ecall_args);
+
+    } else if (atomic_cmpxchg(&enclave_start_called, 0, 1) == 0) {
         // ENCLAVE_START not yet called, so only valid ecall is ENCLAVE_START.
         if (ecall_index != ECALL_ENCLAVE_START) {
             // To keep things simple, we treat an invalid ecall_index like an

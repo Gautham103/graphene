@@ -684,6 +684,16 @@ int ecall_thread_reset(void) {
     return sgx_ecall(ECALL_THREAD_RESET, NULL);
 }
 
+int ecall_thread_setup (void* thread_info) {
+    EDEBUG(ECALL_THREAD_SETUP, thread_info);
+    return sgx_ecall(ECALL_THREAD_SETUP, thread_info);
+}
+
+ int ecall_thread_create(void* thread_info) {
+    EDEBUG(ECALL_THREAD_CREATE, NULL);
+    return sgx_ecall(ECALL_THREAD_CREATE, thread_info);
+}
+
 noreturn void __abort(void) {
     INLINE_SYSCALL(exit_group, 1, -1);
     while (true) {

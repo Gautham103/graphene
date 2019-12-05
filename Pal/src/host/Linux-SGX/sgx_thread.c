@@ -13,13 +13,28 @@
 #include "sgx_enclave.h"
 #include "debugger/sgx_gdb.h"
 
+__thread struct pal_enclave * current_enclave;
+__thread sgx_arch_tcs_t * current_tcs;
+
+enum {
+        TCS_ALLOC = 0,
+        TCS_UNALLOC,
+};
+
 struct thread_map {
     unsigned int     tid;
     sgx_arch_tcs_t * tcs;
+    unsigned int     thread_index;
+    unsigned int     status;
+    unsigned long    tcs_addr;
+    unsigned long    ssa_addr;
+    unsigned long    tls_addr;
+    unsigned long    enclave_entry;
 };
 
 static sgx_arch_tcs_t * enclave_tcs;
-static int enclave_thread_num;
+static unsigned int enclave_thread_num;
+static unsigned int enclave_max_thread_num;
 static struct thread_map * enclave_thread_map;
 
 void pal_tcb_urts_init(PAL_TCB_URTS* tcb, void* stack, void* alt_stack) {
@@ -31,25 +46,41 @@ void pal_tcb_urts_init(PAL_TCB_URTS* tcb, void* stack, void* alt_stack) {
 
 static spinlock_t tcs_lock = INIT_SPINLOCK_UNLOCKED;
 
-void create_tcs_mapper (void * tcs_base, unsigned int thread_num)
-{
-    size_t thread_map_size = ALIGN_UP_POW2(sizeof(struct thread_map) * thread_num, PRESET_PAGESIZE);
-
-    enclave_tcs = tcs_base;
+void create_tcs_mapper (unsigned long ssa_base, unsigned long tcs_base, unsigned long tls_base, unsigned long enclave_entry,
+                                                unsigned int thread_num, unsigned int max_thread_num) {
+    enclave_tcs = (sgx_arch_tcs_t*)tcs_base;
+    enclave_thread_map = malloc(sizeof(struct thread_map) * max_thread_num);
     enclave_thread_num = thread_num;
-    enclave_thread_map = (struct thread_map*)INLINE_SYSCALL(mmap, 6, NULL, thread_map_size,
-                                                            PROT_READ | PROT_WRITE,
-                                                            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    enclave_max_thread_num = max_thread_num;
 
-    for (uint32_t i = 0 ; i < thread_num ; i++) {
+
+    for (unsigned int i = 0 ; i < enclave_max_thread_num ; i++) {
         enclave_thread_map[i].tid = 0;
+        enclave_thread_map[i].thread_index = i;
+        enclave_thread_map[i].tcs = NULL;
+        enclave_thread_map[i].ssa_addr = ssa_base + i * PRESET_PAGESIZE * 2;
+        enclave_thread_map[i].tcs_addr = tcs_base + i * PRESET_PAGESIZE;
+        enclave_thread_map[i].tls_addr = tls_base + i * PRESET_PAGESIZE;
+        enclave_thread_map[i].enclave_entry = enclave_entry;
         enclave_thread_map[i].tcs = &enclave_tcs[i];
+        enclave_thread_map[i].status = TCS_UNALLOC;
     }
+}
+
+void create_thread_context(struct thread_map* thread_info) {
+    //using management thread for setup newly-created thread context
+    current_tcs = enclave_thread_map[enclave_thread_num].tcs;
+
+    ecall_thread_setup((void*)thread_info);
+
+    mktcs(thread_info->tcs_addr);
+
+    ecall_thread_create((void*)thread_info);
 }
 
 void map_tcs(unsigned int tid) {
     spinlock_lock(&tcs_lock);
-    for (int i = 0 ; i < enclave_thread_num ; i++)
+    for (unsigned int i = 0 ; i < enclave_thread_num ; i++)
         if (!enclave_thread_map[i].tid) {
             enclave_thread_map[i].tid = tid;
             get_tcb_urts()->tcs = enclave_thread_map[i].tcs;
@@ -57,12 +88,34 @@ void map_tcs(unsigned int tid) {
             break;
         }
     spinlock_unlock(&tcs_lock);
+
+    /* EDMM Create thread dynamically after static threads run out
+     * There is one thread at enclave_thead_map[enclave_thread_num]
+     * which is dedicated as management thread for creating new threads
+     * start to create threads with enclave_thread_map[enclave_thread_num + 1]
+     */
+    for (unsigned int i = enclave_thread_num; i < enclave_max_thread_num; i++) {
+        if (!enclave_thread_map[i].tid) {
+            /* Allocate the thread context (SSA/TLS/TCS) for new
+             * thread if not allocated previously */
+            if (enclave_thread_map[i].status == TCS_UNALLOC) {
+                // TODO: Add Mutext here
+                create_thread_context(enclave_thread_map + i);
+                enclave_thread_map[i].status = TCS_ALLOC;
+            }
+            enclave_thread_map[i].tid = tid;
+            current_tcs = enclave_thread_map[i].tcs;
+            ((struct enclave_dbginfo *) DBGINFO_ADDR)->thread_tids[i] = tid;
+            return ;
+        }
+    }
 }
 
 void unmap_tcs(void) {
     spinlock_lock(&tcs_lock);
 
-    int index = get_tcb_urts()->tcs - enclave_tcs;
+    unsigned int index = get_tcb_urts()->tcs - enclave_tcs;
+
     struct thread_map * map = &enclave_thread_map[index];
 
     assert(index < enclave_thread_num);
@@ -219,7 +272,7 @@ int clone_thread(void) {
 
 int interrupt_thread (void * tcs)
 {
-    int index = (sgx_arch_tcs_t *) tcs - enclave_tcs;
+    unsigned int index = (sgx_arch_tcs_t*) tcs - enclave_tcs;
     struct thread_map * map = &enclave_thread_map[index];
     if (index >= enclave_thread_num)
         return -EINVAL;

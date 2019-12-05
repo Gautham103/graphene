@@ -355,14 +355,12 @@ int initialize_enclave (struct pal_enclave * enclave)
         enum sgx_page_type type;
     };
 
-    /*
-     * 10 for manifest, SSA, TCS, etc
-     * + enclave->thread_num for normal stack
-     * + enclave->thread_num for signal stack
-     */
-    int area_num_max = 10 + enclave->thread_num * 2;
-    struct mem_area * areas = __alloca(sizeof(areas[0]) * area_num_max);
+    struct mem_area * areas =
+        __alloca(sizeof(areas[0]) * (16 + MAX_THREAD_NUM));
     int area_num = 0;
+
+    /* leave the virtual address space for maximum supported thread number under EDMM */
+    uint32_t allocated_thread_num = enclave->pal_sec.edmm_mode ? MAX_THREAD_NUM : enclave->thread_num;
 
     /* The manifest needs to be allocated at the upper end of the enclave
      * memory. That's used by pal_linux_main to find the manifest area. So add
@@ -377,27 +375,27 @@ int initialize_enclave (struct pal_enclave * enclave)
     areas[area_num] = (struct mem_area) {
         .desc = "ssa", .skip_eextend = false, .fd = -1,
         .is_binary = false, .addr = 0,
-        .size = enclave->thread_num * enclave->ssaframesize * SSAFRAMENUM,
+        .size = allocated_thread_num * enclave->ssaframesize * SSAFRAMENUM,
         .prot = PROT_READ | PROT_WRITE, .type = SGX_PAGE_REG
     };
     struct mem_area* ssa_area = &areas[area_num++];
 
     areas[area_num] = (struct mem_area) {
         .desc = "tcs", .skip_eextend = false, .fd = -1,
-        .is_binary = false, .addr = 0, .size = enclave->thread_num * g_page_size,
+        .is_binary = false, .addr = 0, .size = allocated_thread_num * g_page_size,
         .prot = 0, .type = SGX_PAGE_TCS
     };
     struct mem_area* tcs_area = &areas[area_num++];
 
     areas[area_num] = (struct mem_area) {
         .desc = "tls", .skip_eextend = false, .fd = -1,
-        .is_binary = false, .addr = 0, .size = enclave->thread_num * g_page_size,
+        .is_binary = false, .addr = 0, .size = allocated_thread_num * g_page_size,
         .prot = PROT_READ | PROT_WRITE, .type = SGX_PAGE_REG
     };
     struct mem_area* tls_area = &areas[area_num++];
 
     struct mem_area* stack_areas = &areas[area_num]; /* memorize for later use */
-    for (uint32_t t = 0; t < enclave->thread_num; t++) {
+    for (uint32_t t = 0; t < allocated_thread_num; t++) {
         areas[area_num] = (struct mem_area) {
             .desc = "stack", .skip_eextend = false, .fd = -1,
             .is_binary = false, .addr = 0, .size = ENCLAVE_STACK_SIZE,
@@ -489,6 +487,7 @@ int initialize_enclave (struct pal_enclave * enclave)
         area_num++;
     }
 
+    unsigned int added_stacks = 0;
     for (int i = 0 ; i < area_num ; i++) {
         if (areas[i].fd != -1 && areas[i].is_binary) {
             ret = load_enclave_binary(&enclave_secs, areas[i].fd, areas[i].addr, areas[i].prot);
@@ -511,7 +510,8 @@ int initialize_enclave (struct pal_enclave * enclave)
                 goto out;
             }
 
-            for (uint32_t t = 0 ; t < enclave->thread_num ; t++) {
+            uint32_t tls_thread_num = enclave->pal_sec.edmm_mode ? enclave->thread_num + 1 : enclave->thread_num;
+            for (uint32_t t = 0 ; t < tls_thread_num ; t++) {
                 struct enclave_tls * gs = data + g_page_size * t;
                 memset(gs, 0, g_page_size);
                 assert(sizeof(*gs) <= g_page_size);
@@ -550,7 +550,8 @@ int initialize_enclave (struct pal_enclave * enclave)
                 goto out;
             }
 
-            for (uint32_t t = 0 ; t < enclave->thread_num ; t++) {
+            uint32_t tcs_thread_num = enclave->pal_sec.edmm_mode ? enclave->thread_num + 1 : enclave->thread_num;
+            for (uint32_t t = 0 ; t < tcs_thread_num ; t++) {
                 sgx_arch_tcs_t * tcs = data + g_page_size * t;
                 memset(tcs, 0, g_page_size);
                 tcs->ossa = ssa_area->addr +
@@ -575,8 +576,31 @@ int initialize_enclave (struct pal_enclave * enclave)
             }
         }
 
-        if (!enclave->pal_sec.edmm_mode || strcmp_static(areas[i].desc, "free"))
-        {
+        if (enclave->pal_sec.edmm_mode) {
+
+            if (strcmp_static(areas[i].desc, "free")) {
+
+                // EDMM: SSA/TLS/TCS only commit EPC pages for static threads
+	            // commit one more thread for dynamically create new thread context
+                unsigned long area_size = 0;
+                if (!strcmp_static(areas[i].desc, "ssa")) {
+                    area_size = enclave->thread_num * enclave->ssaframesize * SSAFRAMENUM;
+                } else if (!strcmp_static(areas[i].desc, "tcs") || !strcmp_static(areas[i].desc, "tls")) {
+                    area_size = enclave->thread_num * g_page_size;
+                } else if (!strcmp_static(areas[i].desc, "stack")) {
+                    if (added_stacks++ < enclave->thread_num)
+                        area_size = areas[i].size;
+                } else {
+                    area_size = areas[i].size;
+                }
+
+                if (area_size)
+                    ret = add_pages_to_enclave(&enclave_secs, (void*) areas[i].addr, data, area_size,
+                                               areas[i].type, areas[i].prot, areas[i].skip_eextend, areas[i].desc);
+            }
+
+        } else {
+
             ret = add_pages_to_enclave(&enclave_secs, (void *) areas[i].addr, data, areas[i].size,
                     areas[i].type, areas[i].prot, areas[i].skip_eextend, areas[i].desc);
         }
@@ -596,7 +620,10 @@ int initialize_enclave (struct pal_enclave * enclave)
         goto out;
     }
 
-    create_tcs_mapper((void *) enclave_secs.base + tcs_area->addr, enclave->thread_num);
+    create_tcs_mapper(ssa_area->addr, enclave_secs.base + tcs_area->addr,
+            enclave_secs.base + tls_area->addr, enclave_entry_addr,
+            enclave->thread_num, enclave->pal_sec.edmm_mode ? MAX_THREAD_NUM : enclave->thread_num);
+
 
     struct enclave_dbginfo * dbg = (void *)
             INLINE_SYSCALL(mmap, 6, DBGINFO_ADDR,

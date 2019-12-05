@@ -76,7 +76,7 @@ void allocate_page_range(void * addr, uint64_t size)
     uint64_t accept_flags = SGX_SECINFO_FLAGS_R | SGX_SECINFO_FLAGS_W |
                         SGX_SECINFO_FLAGS_REG | SGX_SECINFO_FLAGS_PENDING;
 
-     sgx_accept_pages(accept_flags, start_addr, end_addr);
+     sgx_accept_pages(accept_flags, start_addr, end_addr, 1);
 }
 
 

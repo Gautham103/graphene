@@ -855,9 +855,9 @@ restore_xregs:
  * sgx_accept:
  * EACCEPT pages for dynamic memory management
  */
-    .global sgx_do_eaccept
-    .type sgx_do_eaccept, @function
-sgx_do_eaccept:
+    .global sgx_accept
+    .type sgx_accept, @function
+sgx_accept:
     .cfi_startproc
 
     push %rbx
@@ -871,15 +871,16 @@ sgx_do_eaccept:
     ret
 
     .cfi_endproc
-    .size sgx_do_eaccept, .-sgx_do_eaccept
+    .size sgx_accept, .-sgx_accept
 
  /*
   * sgx_emodpe:
   * EMODPE pages for dynamic memory management
   */
-    .global sgx_do_emodpe
-    .type sgx_do_emodpe, @function
-sgx_do_emodpe:
+
+    .global sgx_modpe
+    .type sgx_modpe, @function
+sgx_modpe:
     .cfi_startproc
 
     push %rbx
@@ -893,4 +894,5 @@ sgx_do_emodpe:
     ret
 
     .cfi_endproc
-    .size sgx_do_emodpe, .-sgx_do_emodpe
+    .size sgx_modpe, .-sgx_modpe
+

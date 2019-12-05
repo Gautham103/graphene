@@ -23,6 +23,7 @@ SSAFRAMESIZE = offs.PAGESIZE
 DEFAULT_ENCLAVE_SIZE = '256M'
 DEFAULT_THREAD_NUM = 4
 ENCLAVE_HEAP_MIN = offs.DEFAULT_HEAP_MIN
+MAX_THREAD_NUM = 16
 
 
 # Utilities
@@ -377,7 +378,6 @@ def get_memory_areas(attr, args):
     edmm_mode = attr['edmm_mode']
     allocated_thread_num = MAX_THREAD_NUM if edmm_mode else attr['thread_num']
     eadd_thread_num = attr['thread_num'] if edmm_mode else attr['thread_num']
-
     areas = []
     areas.append(
         MemoryArea('ssa',

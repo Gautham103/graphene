@@ -171,8 +171,7 @@ int sgx_verify_report (sgx_report_t* report)
 
 #define SE_DECLSPEC_ALIGN(x) __attribute__((aligned(x)))
 
- int sgx_accept_pages(uint64_t sfl, size_t lo, size_t hi)
-{
+int sgx_accept_pages(uint64_t sfl, size_t lo, size_t hi, bool executable) {
     size_t addr = hi;
     SE_DECLSPEC_ALIGN(sizeof(sgx_arch_sec_info_t)) sgx_arch_sec_info_t si;
     si.flags = sfl;
@@ -185,15 +184,15 @@ int sgx_verify_report (sgx_report_t* report)
      while (lo < addr)
     {
         addr -= PRESET_PAGESIZE;
-        int rc = sgx_do_eaccept(&si, addr);
+        int rc = sgx_accept(&si, (void*)addr);
 
          /* FIXME: Need a better handle here, adding the flow for checking multiple EACCEPT on the same page */
-        if (rc != 0) {
-//            SGX_DBG(DBG_E, "eaccept fails: %d\n", rc);
-//            return rc;
-                continue;
+        if (rc != 0)
+              continue;
+
+        if (executable) {
+            rc = sgx_modpe(&smi, (void*)addr);
         }
-        rc = sgx_do_emodpe(&smi, addr);
     }
     return 0;
 }

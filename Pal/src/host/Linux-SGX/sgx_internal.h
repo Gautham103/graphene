@@ -105,6 +105,8 @@ int retrieve_verified_quote(const sgx_spid_t* spid, const char* subkey, bool lin
                             const sgx_report_t* report, const sgx_quote_nonce_t* nonce,
                             sgx_attestation_t* attestation);
 
+void mktcs(unsigned long tcs_addr);
+
 int init_enclave(sgx_arch_secs_t * secs,
                  sgx_arch_enclave_css_t * sigstruct,
                  sgx_arch_token_t * token);
@@ -120,11 +122,23 @@ void async_exit_pointer (void);
 int interrupt_thread (void * tcs);
 int clone_thread (void);
 
-void create_tcs_mapper (void * tcs_base, unsigned int thread_num);
 int pal_thread_init(void* tcbptr);
+void create_tcs_mapper (unsigned long ssa_base, unsigned long tcs_base, unsigned long tls_base, unsigned long enclave_entry,
+                                                unsigned int thread_num, unsigned int max_thread_num);
+
 void map_tcs(unsigned int tid);
 void unmap_tcs(void);
 void thread_exit(int status);
+
+extern __thread struct pal_enclave * current_enclave;
+
+#define PAL_SEC() (&current_enclave->pal_sec)
+
+extern __thread sgx_arch_tcs_t * current_tcs
+            __attribute__((tls_model ("initial-exec")));
+
+extern __thread unsigned long debug_register
+            __attribute__((tls_model ("initial-exec")));
 
 uint64_t sgx_edbgrd (void * addr);
 void sgx_edbgwr (void * addr, uint64_t data);
